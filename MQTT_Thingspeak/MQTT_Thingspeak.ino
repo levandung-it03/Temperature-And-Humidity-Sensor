@@ -37,10 +37,11 @@ void fetchThingSpeakThresholds(
   float &humidityThreshold,
   int &speakerStatus) {
   // Create the GET request to read the last field values from the channel
-  String getStr = "/channels/YOUR_CHANNEL_ID/fields/1.json?api_key=" + apiReadKey + "&results=1";
+  String getStr = "/channels/" + String(CHANNEL_ID) + "/feeds.json?api_key=" + apiReadKey + "&results=1";
+  // String getStr = "/channels/YOUR_CHANNEL_ID/fields/1.json?api_key=" + apiReadKey + "&results=1";
 
   client.println("GET " + getStr + " HTTP/1.1");
-  client.println("Host: api.thingspeak.com");
+  client.println("Host: " + server);
   client.println("Connection: close");
   client.println();
 
@@ -48,6 +49,7 @@ void fetchThingSpeakThresholds(
   while (client.connected() || client.available()) {
     if (client.available()) {
       String line = client.readStringUntil('\n');
+      Serial.println(line);
 
       // Parse temperature threshold từ "field3"
       if (line.indexOf("\"field3\":\"") >= 0) {
@@ -89,7 +91,7 @@ void loop() {
 
     // Send HTTP POST request
     client.println("POST /update HTTP/1.1");
-    client.println("Host: api.thingspeak.com");
+    client.println("Host: " + server);
     client.println("Connection: close");
     client.println("X-THINGSPEAKAPIKEY: " + apiWriteKey);
     client.println("Content-Type: application/x-www-form-urlencoded");
@@ -110,8 +112,8 @@ void loop() {
 
     // Relay logic based on temperature and humidity
     if (speakerStatus == 1 && (temperature >= temperatureThreshold || humidity > humidityThreshold)) {
-      digitalWrite(RELAY, LOW);  // Deactivate relay
-      delay(1000);               // Turning on RELAY
+      //digitalWrite(RELAY, LOW);  // Deactivate relay
+      delay(1000);  // Turning on RELAY
       Serial.println("Relay activated");
     }
   }
