@@ -14,15 +14,18 @@ import java.net.URL;
 import java.util.Objects;
 
 public class GUI {
-    private static final String apiReadKey = "TC6R21JT5ZSM6S5J";
-    private static final String apiWriteKey = "ZCBR72DSCAC9S2VM";
-    private static final String channelId = "2712721";
+    private static final String apiReadKey = "RSJ6MDJBWBVG6O0D";
+    private static final String apiWriteKey = "X4IQSOK40JDTXKCY";
+    private static final String channelId = "2718444";
+    private static Timer timer;
 
     public static void main(String[] args) {
         //--Loading notification
         JDialog loadingDialog = GUI.getLoadingDialog("Hold your connection to load data from ThingSpeak...");
 
         ThingSpeakResponse channelData = GUI.fetchDataFromThingSpeak();
+        boolean hasData = !Objects.isNull(channelData) && !Objects.isNull(channelData.getFeeds())
+            && channelData.getFeeds().length != 0;
 
         //--Main Application
         JFrame frame = new JFrame();
@@ -35,17 +38,15 @@ public class GUI {
         labelPanel.add(label);
 
         JTextField temperature = new JTextField();
-        temperature.setText(Objects.isNull(channelData) ? "" : channelData.getFeeds()[0].getField3().toString());
+        temperature.setText(hasData ? channelData.getFeeds()[0].getField1().toString() : "");
         JPanel temperaturePanel = GUI.buildFieldSetLegend(temperature, "Temperature Threshold");
 
         JTextField humidity = new JTextField();
-        humidity.setText(Objects.isNull(channelData) ? "" : channelData.getFeeds()[0].getField4().toString());
+        humidity.setText(hasData ? channelData.getFeeds()[0].getField2().toString() : "");
         JPanel humidityPanel = GUI.buildFieldSetLegend(humidity, "Humidity Threshold");
 
         JComboBox status = new JComboBox(new String[] {"On", "Off"});
-        status.setSelectedIndex(
-            (!Objects.isNull(channelData) && channelData.getFeeds()[0].getField5().equals(0))
-                ? 1 : 0);
+        status.setSelectedIndex((hasData && channelData.getFeeds()[0].getField3().equals(0)) ? 1 : 0);
         JPanel statusPanel = GUI.buildFieldSetLegend(status, "Speaker Status");
 
         JPanel submitPanel = new JPanel(new FlowLayout());
@@ -97,12 +98,23 @@ public class GUI {
                 return;
             }
 
+            if (!Objects.isNull(timer) && timer.isRunning()) {
+                JOptionPane.showMessageDialog(null, "Wait in 15 seconds to make new update.",
+                    "Warning", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
             try {
                 double temperatureVal = Double.parseDouble(temperature.getText());
                 double humidityVal = Double.parseDouble(humidity.getText());
                 int speakerStatusVal = Objects.requireNonNull(status.getSelectedItem()).equals("On") ? 1 : 0;
 
                 GUI.postDataToThingSpeak(temperatureVal, humidityVal, speakerStatusVal);
+                timer = new Timer(15000, e -> {
+                    timer.stop();
+                });
+                timer.setRepeats(false); // Ensure it doesn't repeat
+                timer.start(); // Start the timer
             } catch (Exception e) {
                 JOptionPane.showMessageDialog(null, "Information is wrong.",
                     "Warning", JOptionPane.WARNING_MESSAGE);
@@ -155,7 +167,7 @@ public class GUI {
             conn.setDoOutput(true); // Enable writing to the connection
 
             // Create the request body
-            String requestBody = "field3=" + temperature + "&field4=" + humidity + "&field5=" + speakerStatus;
+            String requestBody = "field1=" + temperature + "&field2=" + humidity + "&field3=" + speakerStatus;
 
             // Write the request body to the output stream
             try (OutputStream os = conn.getOutputStream()) {
@@ -171,6 +183,7 @@ public class GUI {
                 // Handle error response
                 JOptionPane.showMessageDialog(null, "Failed to send data. Response code: " + responseCode);
             }
+            conn.disconnect();
         } catch (Exception e) {
             JOptionPane.showMessageDialog(null, "Failed to post data to ThingSpeak.");
         }
