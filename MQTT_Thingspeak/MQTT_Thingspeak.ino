@@ -3,9 +3,11 @@
 #include <ESP8266WiFi.h>
 #include <DHT.h>
 
-String apiWriteKey = "ZCBR72DSCAC9S2VM";
-String apiReadKey = "TC6R21JT5ZSM6S5J";
-const char *server = "api.thingspeak.com";
+const String apiWriteKey = "ZCBR72DSCAC9S2VM";
+const String apiReadKey = "TC6R21JT5ZSM6S5J";
+const String apiThresholdWriteKey = "X4IQSOK40JDTXKCY";
+const String apiThresholdReadKey = "RSJ6MDJBWBVG6O0D";
+const String server = "api.thingspeak.com";
 
 #define DHTPIN D2
 #define DHTTYPE DHT11
@@ -31,47 +33,53 @@ void setup() {
   dht.begin();
 }
 
-void fetchThingSpeakThresholds(
-  WiFiClient client,
-  float &temperatureThreshold,
-  float &humidityThreshold,
-  int &speakerStatus) {
-  // Create the GET request to read the last field values from the channel
-  String getStr = "/channels/" + String(CHANNEL_ID) + "/feeds.json?api_key=" + apiReadKey + "&results=1";
-  // String getStr = "/channels/YOUR_CHANNEL_ID/fields/1.json?api_key=" + apiReadKey + "&results=1";
+void fetchThingSpeakThresholds(WiFiClient client, float &temperatureThreshold, float &humidityThreshold, int &speakerStatus) {
+  if (client.connect(server, 80)) {
+    String getStr = "/channels/" + String(THRESHOLD_CHANNEL_ID) + "/feeds.json?api_key=" + apiThresholdReadKey + "&results=1";
 
-  client.println("GET " + getStr + " HTTP/1.1");
-  client.println("Host: " + server);
-  client.println("Connection: close");
-  client.println();
+    client.println("GET " + getStr + " HTTP/1.1");
+    client.println("Host: " + server);
+    client.println("Connection: close");
+    client.println();
 
-  // Wait for the server response
-  while (client.connected() || client.available()) {
-    if (client.available()) {
-      String line = client.readStringUntil('\n');
-      Serial.println(line);
+    // Wait for the server response
+    while (client.connected() || client.available()) {
+      if (client.available()) {
+        String line = client.readStringUntil('\n');
+        int feedsDataIndexStart = line.indexOf("feeds");
+        if (feedsDataIndexStart == -1)
+          continue;
 
-      // Parse temperature threshold từ "field3"
-      if (line.indexOf("\"field3\":\"") >= 0) {
-        int start = line.indexOf("\"field3\":\"") + 9;
-        int end = line.indexOf("\"", start);
-        temperatureThreshold = line.substring(start, end).toFloat();
-      }
+        String data = line.substring(feedsDataIndexStart, line.length());
 
-      // Parse humidity threshold từ "field4"
-      if (line.indexOf("\"field4\":\"") >= 0) {
-        int start = line.indexOf("\"field4\":\"") + 9;
-        int end = line.indexOf("\"", start);
-        humidityThreshold = line.substring(start, end).toFloat();
-      }
+        // Parse temperature threshold từ "field1"
+        if (data.indexOf("field1") >= 0) {
+          int start = data.indexOf("field1") + 9;
+          int end = data.indexOf("\"", start);
+          temperatureThreshold = data.substring(start, end).toFloat();
+        }
 
-      // Parse speaker status từ "field5"
-      if (line.indexOf("\"field5\":\"") >= 0) {
-        int start = line.indexOf("\"field5\":\"") + 9;
-        int end = line.indexOf("\"", start);
-        speakerStatus = line.substring(start, end).toInt();
+        // Parse humidity threshold từ "field2"
+        if (data.indexOf("field2") >= 0) {
+          int start = data.indexOf("field2") + 9;
+          int end = data.indexOf("\"", start);
+          humidityThreshold = data.substring(start, end).toFloat();
+        }
+
+        // Parse speaker status từ "field3"
+        if (data.indexOf("field3") >= 0) {
+          int start = data.indexOf("field3") + 9;
+          int end = data.indexOf("\"", start);
+          speakerStatus = data.substring(start, end).toInt();
+        }
       }
     }
+    Serial.print("Temperature Threshold: ");
+    Serial.println(temperatureThreshold);
+    Serial.print("Humidity Threshold: ");
+    Serial.println(humidityThreshold);
+    Serial.print("Speaker Status: ");
+    Serial.println(speakerStatus);
   }
 }
 
@@ -84,6 +92,11 @@ void loop() {
     Serial.println("Failed to read from DHT sensor");
     return;
   }
+
+  float temperatureThreshold = 0;
+  float humidityThreshold = 0;
+  int speakerStatus = 1;
+  fetchThingSpeakThresholds(client, temperatureThreshold, humidityThreshold, speakerStatus);
 
   // Connect to the ThingSpeak server
   if (client.connect(server, 80)) {
@@ -105,15 +118,10 @@ void loop() {
     Serial.print(humidity);
     Serial.println(" %. Sent data to ThingSpeak.");
 
-    float temperatureThreshold = 0;
-    float humidityThreshold = 0;
-    int speakerStatus = 1;
-    fetchThingSpeakThresholds(client, temperatureThreshold, humidityThreshold, speakerStatus);
-
     // Relay logic based on temperature and humidity
     if (speakerStatus == 1 && (temperature >= temperatureThreshold || humidity > humidityThreshold)) {
-      //digitalWrite(RELAY, LOW);  // Deactivate relay
-      delay(1000);  // Turning on RELAY
+      digitalWrite(RELAY, LOW);  // Deactivate relay
+      delay(200);  // Turning on RELAY
       Serial.println("Relay activated");
     }
   }
